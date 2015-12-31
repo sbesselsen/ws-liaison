@@ -1,14 +1,16 @@
-var ws = require("nodejs-websocket"),
-  EventEmitter = require('events')
+var EventEmitter = require('events')
 
 var Message = require("./message.js")
 
-var Client = function (url) {
+var Client = function (websocketClient, url) {
+  EventEmitter.call(this)
+  
   this.url = url
   this.advertisingCode = null
   this.persistent = false
   this.connected = false
   this.token = null
+  this.websocketClient = websocketClient
   
   var _this = this
   this.on('rawMessage', function (msg) {
@@ -22,7 +24,7 @@ Client.prototype = new EventEmitter()
 Client.prototype.connect = function (success) {
   var _this = this
   
-  this.wsClient = ws.connect(this.url, function () {
+  this.wsClient = this.websocketClient.connect(this.url, function () {
     _this.connected = true
     
     console.log("Connected to server", _this.url)
