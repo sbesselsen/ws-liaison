@@ -1,6 +1,7 @@
 var EventEmitter = require('events')
 
 function Channels() {
+  EventEmitter.call(this)
   this._registryByToken = {}
 }
 Channels.prototype = new EventEmitter()
