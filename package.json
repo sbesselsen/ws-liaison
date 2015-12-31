@@ -1,0 +1,16 @@
+{
+  "name": "ws-liaison",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "nodejs-websocket": "^1.4.1",
+    "sha1": "^1.1.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Sebastiaan Besselsen, MixCom Online BV <sbesselsen@mixcom.nl>",
+  "license": "MIT"
+}
