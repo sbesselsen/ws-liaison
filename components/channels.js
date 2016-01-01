@@ -1,10 +1,11 @@
-var EventEmitter = require('events')
+var EventEmitter = require('events').EventEmitter,
+  util = require('util')
 
 function Channels() {
   EventEmitter.call(this)
   this._registryByToken = {}
 }
-Channels.prototype = new EventEmitter()
+util.inherits(Channels, EventEmitter)
 Channels.prototype.add = function (channel) {
   this._registryByToken[channel.token] = channel
 }

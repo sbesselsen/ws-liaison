@@ -1,4 +1,5 @@
-var EventEmitter = require('events')
+var EventEmitter = require('events').EventEmitter,
+  util = require('util')
 
 var Message = require("./message.js")
 
@@ -8,6 +9,7 @@ var Client = function (websocketClient, url) {
   this.url = url
   this.advertisingCode = null
   this.persistent = false
+  this.reconnecting = false
   this.connected = false
   this.token = null
   this.websocketClient = websocketClient
@@ -19,7 +21,7 @@ var Client = function (websocketClient, url) {
     }
   })
 }
-Client.prototype = new EventEmitter()
+util.inherits(Client, EventEmitter)
 
 Client.prototype.connect = function (success) {
   var _this = this
@@ -47,8 +49,11 @@ Client.prototype.connect = function (success) {
       _this.wsClient = null
       _this.emit('connectionInterrupt')
       if (_this.persistent) {
-        // Try reconnecting every 500 ms
-        _this._reconnect(500)
+        if (!_this.reconnecting) {
+          _this.reconnecting = true
+          // Try reconnecting every 500 ms
+          _this._reconnect(500)
+        }
       } else {
         _this.emit('close')
       }
@@ -66,6 +71,7 @@ Client.prototype.connect = function (success) {
 
 Client.prototype._reconnect = function (interval) {
   if (this.connected) {
+    this.reconnecting = false
     return
   }
   console.log("Trying to reconnect")

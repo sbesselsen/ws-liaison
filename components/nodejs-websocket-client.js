@@ -1,5 +1,6 @@
 var ws = require("nodejs-websocket"),
-  EventEmitter = require('events')
+  EventEmitter = require('events').EventEmitter,
+  util = require('util')
 
 function WebsocketClient(url, success) {
   this.wsClient = ws.connect(url, success)
@@ -17,7 +18,7 @@ function WebsocketClient(url, success) {
   
   EventEmitter.call(this)
 }
-WebsocketClient.prototype = new EventEmitter()
+util.inherits(WebsocketClient, EventEmitter)
 WebsocketClient.prototype.close = function () {
   this.wsClient.close()
 }
