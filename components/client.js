@@ -7,40 +7,62 @@ var Client = function (websocketClient, url) {
   EventEmitter.call(this)
   
   this.url = url
-  this.advertisingCode = null
+  this.publishing = true
+  this.publishCode = null
   this.persistent = false
   this.reconnecting = false
   this.connected = false
   this.token = null
+  this.lastToken = null
   this.websocketClient = websocketClient
-  
-  var _this = this
-  this.on('rawMessage', function (msg) {
-    if (msg.part(0) == 'receive') {
-      _this.emit('receive', msg.part(1))
-    }
-  })
+  this.connectionCallback = null
 }
 util.inherits(Client, EventEmitter)
 
-Client.prototype.connect = function (success) {
+Client.prototype.connectPersistent = function (connectionCallback) {
+  this.persistent = true
+  this.connectionCallback = connectionCallback
+  this._connect()
+}
+
+Client.prototype.connect = function (connectionCallback) {
+  this.persistent = false
+  this.connectionCallback = connectionCallback
+  this._connect()
+}
+
+Client.prototype._connect = function () {
   var _this = this
+  
+  this._updatePublishCode(null)
+  this._updateToken(null)
   
   this.wsClient = this.websocketClient.connect(this.url, function () {
     _this.connected = true
     
     console.log("Connected to server", _this.url)
     
-    if (_this.token) {
-      // Reconnect with the same token
-      _this.join(_this.token)
-    }
-    
     _this.wsClient.on("text", function (str) {
       var msg = Message.parse(str)
       if (!msg) {
         return
       }
+      
+      var msgType = msg.part(0)
+      switch (msgType) {
+        case 'receive':
+          _this.emit('receive', msg.part(1))
+          break
+          
+        case 'publish_code':
+          _this._updatePublishCode(msg.part(1))
+          break
+          
+        case 'token':
+          _this._updateToken(msg.part(1))
+          break
+      }
+      
       _this.emit('rawMessage', msg)
     })
     
@@ -59,8 +81,11 @@ Client.prototype.connect = function (success) {
       }
     })
     
-    if (success) {
-      success()
+    if (_this.connectionCallback) {
+      _this.connectionCallback()
+      if (!_this.persistent) {
+        _this.connectionCallback = null
+      }
     }
   })
   
@@ -79,113 +104,79 @@ Client.prototype._reconnect = function (interval) {
   setTimeout(function () {
       _this._reconnect(interval)
   }, interval)
-  this.connect()
+  this._connect()
 }
 
 Client.prototype._sendRawMessage = function (msg) {
   this.wsClient.sendText(msg.toString())
 }
 
-Client.prototype.advertise = function (codeReceived) {
-  if (this.advertisingCode) {
-    this.unadvertise()
-    this.advertisingCode = null
-  }
-  
-  this._sendRawMessage(Message.build('advertise'))
-  
+Client.prototype._receiveRawMessage = function (f) {
   var _this = this
   var listener = function (msg) {
-    if (msg.part(0) == 'advertised') {
-      _this.advertisingCode = msg.part(1)
-      _this.emit('advertisingCodeChanged', _this.advertisingCode)
-      codeReceived(_this.advertisingCode)
-      this.removeListener('rawMessage', listener)
+    if (f(msg) === true) {
+      _this.removeListener('rawMessage', listener)
     }
   }
   this.on('rawMessage', listener)
 }
 
-Client.prototype.unadvertise = function (success, error) {
-  var code = this.advertisingCode
-  if (!code) {
-    if (error) {
-      error()
-    }
-    return
+Client.prototype._updatePublishCode = function (code) {
+  this.publishCode = code
+  this.emit('publishCodeChange', this.publishCode)
+}
+
+Client.prototype._updateToken = function (token) {
+  this.token = token
+  if (token) {
+    this.lastToken = token
   }
-  
-  this.advertisingCode = null
-  this.emit('advertisingCodeChanged', this.advertisingCode)
-  
-  this._sendRawMessage(Message.build('unadvertise', code))
-  var listener = function (msg) {
-    if (msg.part(0) == 'unadvertised') {
-      if (success) {
-        success()
-      }
-      this.removeListener('rawMessage', listener)
-    }
-    if (msg.part(0) == 'not_found' && msg.part(1) == code) {
-      if (error) {
-        error()
-      }
-      this.removeListener('rawMessage', listener)
-    }
-  }
-  this.on('rawMessage', listener)
+  this.emit('tokenChange', this.token)
+}
+
+Client.prototype.publish = function () {
+  this._sendRawMessage(Message.build('publish'))
+}
+
+Client.prototype.unpublish = function () {
+  this._sendRawMessage(Message.build('unpublish'))
 }
 
 Client.prototype.send = function (data) {
   this._sendRawMessage(Message.build('send', data))
 }
 
-Client.prototype.find = function (code, success, error) {
-  this._sendRawMessage(Message.build('find', code))
-  
-  var _this = this
-  var listener = function (msg) {
-    if (msg.part(0) == 'found' && msg.part(1) == code) {
-      success(msg.part(2))
-      this.removeListener('rawMessage', listener)
-    }
-    if (msg.part(0) == 'not_found' && msg.part(1) == code) {
-      success(null)
-      this.removeListener('rawMessage', listener)
-    }
-  }
-  this.on('rawMessage', listener)
-}
-
 Client.prototype.join = function (token, success, error) {
-  this._sendRawMessage(Message.build('join', token))
-  
   var _this = this
-  var listener = function (msg) {
-    if (msg.part(0) == 'token' && msg.part(1) == token) {
-      this.token = token
+  this._sendRawMessage(Message.build('join', token))
+  this._receiveRawMessage(function (msg) {
+    var msgType = msg.part(0)
+    if (msgType == 'token' && msg.part(1) == token) {
       if (success) {
-        success()
+        success(token)
       }
-      this.removeListener('rawMessage', listener)
+      return true
     }
-  }
-  this.on('rawMessage', listener)
+  })
 }
 
 Client.prototype.joinWithCode = function (code, success, error) {
   var _this = this
-  this.find(code, function (token) {
-    if (token) {
-      _this.join(token, success, error)
-    } else {
-      if (error) {
-        error()
+  
+  this._sendRawMessage(Message.build('join_code', code))
+  this._receiveRawMessage(function (msg) {
+    var msgType = msg.part(0)
+    if (msgType == 'token') {
+      if (success) {
+        success(msg.part(1))
       }
+      return true
     }
-  }, function () {
-    if (error) {
-      error()
+    if (msgType == 'not_found' && msg.part(1) == code) {
+      if (error) {
+        error('Code not found')
+      }
+      return true
     }
   })
 }

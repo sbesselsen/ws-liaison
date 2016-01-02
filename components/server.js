@@ -5,19 +5,18 @@ var Message = require("./message.js"),
   Connection = require("./connection.js"),
   Channel = require("./channel.js"),
   Channels = require("./channels.js"),
-  Advertisement = require("./advertisement.js"),
-  Advertisements = require("./advertisements.js")
+  PublishCodes = require("./publish-codes.js")
 
 var Server = function (port) {
   this.port = port
   
-  this.advertisements = new Advertisements()
+  this.publishCodes = new PublishCodes()
   this.channels = new Channels()
 
   var _this = this
   this.channels.on("removeChannel", function (channel) {
     console.log("Removing channel", channel.token)
-    _this.advertisements.removeAllForToken(channel.token)
+    _this.publishCodes.removeForToken(channel.token)
   })
 }
 
@@ -70,41 +69,30 @@ Server.prototype.listen = function () {
   }).listen(this.port)
 }
 
-// Advertise a channel with a code
-Server.prototype.handle_advertise = function (context, msg) {
-  var advertisement = new Advertisement(generator.generateCode(), context.connection.token)
-  this.advertisements.add(advertisement)
-  console.log("Advertise", advertisement)
-  context.wsConnection.sendText(Message.build("advertised", advertisement.code).toString())
+// Publish a channel with a code
+Server.prototype.handle_publish = function (context, msg) {
+  var code = generator.generateCode()
+  this.publishCodes.link(code, context.connection.token)
+  
+  console.log("Publish", code, context.connection.token)
+  
+  // Send the publish code to all listeners
+  this.sendToChannel(context.channel, Message.build("publish_code", code))
 }
   
-// Unadvertise the channel
-Server.prototype.handle_unadvertise = function (context, msg) {
-  var code = msg.part(1)
-  var advertisement = this.advertisements.get(code)
-  if (!advertisement) {
-    context.wsConnection.sendText(Message.build("not_unadvertised", advertisement.code).toString())
-    this.respondWithError(context, ["Unadvertise request for invalid code", code])
-    return
-  }
-  this.advertisements.remove(advertisement.code)
-  console.log("Unadvertise", advertisement)
-  context.wsConnection.sendText(Message.build("unadvertised", advertisement.code).toString())
-}
+// Unpublish the channel
+Server.prototype.handle_unpublish = function (context, msg) {
+  var token = context.connection.token
+  this.publishCodes.removeForToken(token)
   
-// Find a token for an advertisement
-Server.prototype.handle_find = function (context, msg) {
-  var code = msg.part(1)
-  var advertisement = this.advertisements.get(code)
-  if (advertisement) {
-    context.wsConnection.sendText(Message.build("found", code, advertisement.token).toString())
-  } else {
-    context.wsConnection.sendText(Message.build("not_found", code).toString())
-  }
+  console.log("Unpublish", token)
+  
+  // Send a message to all listeners that there is no publish code any more
+  this.sendToChannel(context.channel, Message.build("publish_code", null))
 }
   
 // Join a channel
-Server.prototype.handle_join = function (context, msg) {
+Server.prototype.handle_join = function (context, msg, joinedWithCode) {
   var token = msg.part(1)
   
   // Validate the token
@@ -134,10 +122,27 @@ Server.prototype.handle_join = function (context, msg) {
   // Confirm joining
   context.wsConnection.sendText(Message.build("token", token).toString())
   
-  console.log("Connection joined channel", context.connection)
+  // If the client hasn't connected through a publish code, tell them the publish code
+  var code = this.publishCodes.code(token)
+  context.wsConnection.sendText(Message.build("publish_code", code).toString())
+  
+  console.log("Connection joined channel", token, context.connection.connectionID)
 }
   
-// Send a message to the channel
+// Join a channel
+Server.prototype.handle_join_code = function (context, msg) {
+  var code = msg.part(1)
+  var token = this.publishCodes.token(code)
+  if (token) {
+    // Handle this as a user joining with a token
+    this.handle_join(context, Message.build('join', token), true)
+  } else {
+    // Notify the user that the code is incorrect
+    context.wsConnection.sendText(Message.build("code_not_found", code).toString())
+  }
+}
+  
+// Send a message to other listeners the channel
 Server.prototype.handle_send = function (context, msg) {
   msg.parts[0] = 'receive'
   
@@ -149,6 +154,14 @@ Server.prototype.handle_send = function (context, msg) {
     if (connection != context.connection) {
       connection.connection.sendText(msg.toString())
     }
+  })
+}
+
+// Send a message to each listener on the channel
+Server.prototype.sendToChannel = function (channel, msg) {
+  var msgData = msg.toString()
+  channel.connections.forEach(function (connection) {
+    connection.connection.sendText(msgData)
   })
 }
 
