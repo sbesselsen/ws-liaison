@@ -5,6 +5,6 @@ module.exports = {
     return sha1('liaison-token-' + Math.random())
   },
   generateCode: function () {
-    return sha1('liaison-code-' + Math.random()).substring(0, 20)
+    return sha1('liaison-code-' + Math.random()).substring(0, 8)
   }
 }
