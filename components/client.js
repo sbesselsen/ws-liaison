@@ -40,8 +40,6 @@ Client.prototype._connect = function () {
   this.wsClient = this.websocketClient.connect(this.url, function () {
     _this.connected = true
     
-    console.log("Connected to server", _this.url)
-    
     _this.wsClient.on("text", function (str) {
       var msg = Message.parse(str)
       if (!msg) {
@@ -99,7 +97,6 @@ Client.prototype._reconnect = function (interval) {
     this.reconnecting = false
     return
   }
-  console.log("Trying to reconnect")
   var _this = this
   setTimeout(function () {
       _this._reconnect(interval)
@@ -166,13 +163,13 @@ Client.prototype.joinWithCode = function (code, success, error) {
   this._sendRawMessage(Message.build('join_code', code))
   this._receiveRawMessage(function (msg) {
     var msgType = msg.part(0)
-    if (msgType == 'token') {
+    if (msgType == 'token' && msg.part(2) == code) {
       if (success) {
         success(msg.part(1))
       }
       return true
     }
-    if (msgType == 'not_found' && msg.part(1) == code) {
+    if (msgType == 'code_not_found' && msg.part(1) == code) {
       if (error) {
         error('Code not found')
       }

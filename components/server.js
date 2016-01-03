@@ -92,7 +92,7 @@ Server.prototype.handle_unpublish = function (context, msg) {
 }
   
 // Join a channel
-Server.prototype.handle_join = function (context, msg, joinedWithCode) {
+Server.prototype.handle_join = function (context, msg, joinCode) {
   var token = msg.part(1)
   
   // Validate the token
@@ -120,7 +120,11 @@ Server.prototype.handle_join = function (context, msg, joinedWithCode) {
   context.channel = channel
   
   // Confirm joining
-  context.wsConnection.sendText(Message.build("token", token).toString())
+  var joinMsg = ["token", token]
+  if (joinCode) {
+    joinMsg.push(joinCode)
+  }
+  context.wsConnection.sendText(new Message(joinMsg).toString())
   
   // If the client hasn't connected through a publish code, tell them the publish code
   var code = this.publishCodes.code(token)
@@ -135,7 +139,7 @@ Server.prototype.handle_join_code = function (context, msg) {
   var token = this.publishCodes.token(code)
   if (token) {
     // Handle this as a user joining with a token
-    this.handle_join(context, Message.build('join', token), true)
+    this.handle_join(context, Message.build('join', token), code)
   } else {
     // Notify the user that the code is incorrect
     context.wsConnection.sendText(Message.build("code_not_found", code).toString())
