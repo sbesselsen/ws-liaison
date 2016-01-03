@@ -7,9 +7,12 @@
     "nodejs-websocket": "^1.4.1",
     "sha1": "^1.1.1"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "browserify": "^12.0.1"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build-browser": "browserify browser.js > dist/liaison.js"
   },
   "author": "Sebastiaan Besselsen, MixCom Online BV <sbesselsen@mixcom.nl>",
   "license": "MIT"
